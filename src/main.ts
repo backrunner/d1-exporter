@@ -149,6 +149,32 @@ function splitSqlStatements(sqlContent: string): string[] {
 }
 
 // ============================================================
+// Utility Functions
+// ============================================================
+
+/**
+ * Ask user for confirmation to overwrite existing file
+ * @param filePath Path to the file that would be overwritten
+ * @returns Promise resolving to true if user confirms overwrite, false otherwise
+ */
+async function confirmOverwrite(filePath: string): Promise<boolean> {
+  const { overwrite } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'overwrite',
+      message: `File already exists: ${filePath}. Do you want to overwrite it?`,
+      default: false,
+    }
+  ]);
+
+  if (!overwrite) {
+    console.log(chalk.yellow('Operation cancelled. Existing file was not overwritten.'));
+  }
+
+  return overwrite;
+}
+
+// ============================================================
 // Core Functionality
 // ============================================================
 
@@ -159,7 +185,9 @@ function splitSqlStatements(sqlContent: string): string[] {
  */
 async function convertSqlToSqlite(sqlFilePath: string, sqliteFilePath: string): Promise<void> {
   if (fs.existsSync(sqliteFilePath)) {
-    console.log(chalk.yellow(`SQLite file already exists, overwriting: ${sqliteFilePath}`));
+    if (!(await confirmOverwrite(sqliteFilePath))) {
+      return;
+    }
     fs.unlinkSync(sqliteFilePath);
   }
 
@@ -218,6 +246,12 @@ async function convertSqlToSqlite(sqlFilePath: string, sqliteFilePath: string): 
  * @param sqlOutputPath Target SQL file path
  */
 async function convertSqliteToSql(sqliteFilePath: string, sqlOutputPath: string): Promise<void> {
+  if (fs.existsSync(sqlOutputPath)) {
+    if (!(await confirmOverwrite(sqlOutputPath))) {
+      return;
+    }
+  }
+
   try {
     // Try using better-sqlite3
     const db = new Database(sqliteFilePath, { readonly: true });
@@ -333,6 +367,13 @@ program
         options.output = `./${inputFile.replace(/\.(sqlite|sqlite3|db)$/, '')}.sql`;
       }
 
+      // Check if output file already exists
+      if (fs.existsSync(options.output)) {
+        if (!(await confirmOverwrite(options.output))) {
+          process.exit(0);
+        }
+      }
+
       console.log(chalk.blue(`Converting SQLite database to SQL: ${options.file} -> ${options.output}`));
 
       try {
@@ -379,6 +420,13 @@ program.action(async (databaseArg, options) => {
     // Use default SQLite path if not specified
     if (!options.sqlite) {
       options.sqlite = `./export_${databaseName}.sqlite`;
+    }
+
+    // Check if SQLite file already exists
+    if (fs.existsSync(options.sqlite)) {
+      if (!(await confirmOverwrite(options.sqlite))) {
+        process.exit(0);
+      }
     }
 
     // Prepare wrangler export command
